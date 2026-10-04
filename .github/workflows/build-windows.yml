@@ -39,6 +39,30 @@ jobs:
             "app\src-tauri\main.rs" `
             "app\src-tauri\src\main.rs"
 
+          $main = "app\src-tauri\src\main.rs"
+
+          $content = Get-Content $main -Raw
+
+          if ($content -notmatch "windows_subsystem") {
+            $content = "#![cfg_attr(not(debug_assertions), windows_subsystem = `"windows`")]`r`n`r`n" + $content
+          }
+
+          Set-Content `
+            -Path $main `
+            -Value $content `
+            -Encoding UTF8
+
+      - name: Verify application icon
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "app\src-tauri\icons\icon.ico")) {
+            Write-Error "Application icon not found: app\src-tauri\icons\icon.ico"
+            exit 1
+          }
+
+          Write-Host "Application icon found:"
+          Get-Item "app\src-tauri\icons\icon.ico"
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
