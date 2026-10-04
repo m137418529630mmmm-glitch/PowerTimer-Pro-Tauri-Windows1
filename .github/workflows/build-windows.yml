@@ -1,0 +1,42 @@
+name: Build PowerTimer Pro Windows
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract PowerTimer project
+        shell: pwsh
+        run: |
+          Remove-Item -Recurse -Force app -ErrorAction SilentlyContinue
+          Expand-Archive -Path "PowerTimer-Pro-GitHub-Build.zip" -DestinationPath "app" -Force
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install dependencies
+        working-directory: app
+        run: npm install
+
+      - name: Build Tauri
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: app
+          uploadWorkflowArtifacts: true
+          workflowArtifactNamePattern: PowerTimer-Pro-Windows-[arch]-[bundle]
