@@ -15,10 +15,12 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Extract PowerTimer project
-        shell: pwsh
-        run: |
-          Remove-Item -Recurse -Force app -ErrorAction SilentlyContinue
-          Expand-Archive -Path "PowerTimer-Pro-GitHub-Build.zip" -DestinationPath "app" -Force
+  shell: pwsh
+  run: |
+    Remove-Item -Recurse -Force app -ErrorAction SilentlyContinue
+    Expand-Archive -Path "PowerTimer-Pro-GitHub-Build.zip" -DestinationPath "app" -Force
+    New-Item -ItemType Directory -Force -Path "app\src-tauri\src" | Out-Null
+    Move-Item -Force "app\src-tauri\lib.rs" "app\src-tauri\src\lib.rs"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
