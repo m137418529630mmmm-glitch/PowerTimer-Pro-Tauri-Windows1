@@ -18,9 +18,26 @@ jobs:
         shell: pwsh
         run: |
           Remove-Item -Recurse -Force app -ErrorAction SilentlyContinue
-          Expand-Archive -Path "PowerTimer-Pro-GitHub-Build.zip" -DestinationPath "app" -Force
-          New-Item -ItemType Directory -Force -Path "app\src-tauri\src" | Out-Null
-          Move-Item -Force "app\src-tauri\lib.rs" "app\src-tauri\src\lib.rs"
+
+          Expand-Archive `
+            -Path "PowerTimer-Pro-GitHub-Build.zip" `
+            -DestinationPath "app" `
+            -Force
+
+          New-Item `
+            -ItemType Directory `
+            -Force `
+            -Path "app\src-tauri\src" | Out-Null
+
+          Move-Item `
+            -Force `
+            "app\src-tauri\lib.rs" `
+            "app\src-tauri\src\lib.rs"
+
+          Move-Item `
+            -Force `
+            "app\src-tauri\main.rs" `
+            "app\src-tauri\src\main.rs"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
