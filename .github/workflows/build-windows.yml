@@ -1,4 +1,4 @@
-name: Build PowerTimer Pro Windows
+name: Build Medialab-Shutdown Timer Windows
 
 on:
   workflow_dispatch:
@@ -14,7 +14,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Extract PowerTimer project
+      - name: Extract project
         shell: pwsh
         run: |
           Remove-Item -Recurse -Force app -ErrorAction SilentlyContinue
@@ -24,57 +24,156 @@ jobs:
             -DestinationPath "app" `
             -Force
 
+      # Fix Tauri Rust source structure
+      - name: Fix Rust source structure
+        shell: pwsh
+        run: |
           New-Item `
             -ItemType Directory `
             -Force `
             -Path "app\src-tauri\src" | Out-Null
 
-          Move-Item `
-            -Force `
-            "app\src-tauri\lib.rs" `
-            "app\src-tauri\src\lib.rs"
-
-          Move-Item `
-            -Force `
-            "app\src-tauri\main.rs" `
-            "app\src-tauri\src\main.rs"
-
-          $main = "app\src-tauri\src\main.rs"
-
-          $content = Get-Content $main -Raw
-
-          if ($content -notmatch "windows_subsystem") {
-            $content = "#![cfg_attr(not(debug_assertions), windows_subsystem = `"windows`")]`r`n`r`n" + $content
+          if (Test-Path "app\src-tauri\lib.rs") {
+            Move-Item `
+              -Force `
+              "app\src-tauri\lib.rs" `
+              "app\src-tauri\src\lib.rs"
           }
 
-          Set-Content `
-            -Path $main `
-            -Value $content `
-            -Encoding UTF8
+          if (Test-Path "app\src-tauri\main.rs") {
+            Move-Item `
+              -Force `
+              "app\src-tauri\main.rs" `
+              "app\src-tauri\src\main.rs"
+          }
 
+      # Hide Windows console window
+      - name: Configure Windows GUI
+        shell: pwsh
+        run: |
+          $main = "app\src-tauri\src\main.rs"
+
+          if (Test-Path $main) {
+            $content = Get-Content $main -Raw
+
+            if ($content -notmatch "windows_subsystem") {
+              $content = "#![cfg_attr(not(debug_assertions), windows_subsystem = `"windows`")]`r`n`r`n" + $content
+            }
+
+            Set-Content `
+              -Path $main `
+              -Value $content `
+              -Encoding UTF8
+          }
+
+      # Make English the default language
+      - name: Configure English default
+        shell: pwsh
+        run: |
+          $appFile = "app\src\App.tsx"
+
+          if (Test-Path $appFile) {
+            $content = Get-Content $appFile -Raw
+
+            # Change initial Arabic state to English
+            $content = $content.Replace(
+              "useState<boolean>(true)",
+              "useState<boolean>(false)"
+            )
+
+            # Add language switch
+            $marker = "          {/* Header Row: mediaLab publishing logo on left, category on right */}"
+
+            $languageButton = @'
+          {/* Language Switch */}
+          <div className="flex justify-end mb-1">
+            <button
+              type="button"
+              onClick={() => setIsArabic(!isArabic)}
+              className="px-3 py-1.5 rounded-lg bg-white border border-neutral-300 text-xs font-bold text-neutral-700 hover:bg-neutral-50 shadow-xs transition-colors"
+              title={isArabic ? 'Switch to English' : 'التبديل إلى العربية'}
+            >
+              {isArabic ? 'EN' : 'AR'}
+            </button>
+          </div>
+
+'@
+
+            if ($content -notmatch "Language Switch") {
+              $content = $content.Replace(
+                $marker,
+                $languageButton + $marker
+              )
+            }
+
+            Set-Content `
+              -Path $appFile `
+              -Value $content `
+              -Encoding UTF8
+          }
+
+      # Change application name
+      - name: Configure application name
+        shell: pwsh
+        run: |
+          $configFile = "app\src-tauri\tauri.conf.json"
+
+          $config = Get-Content $configFile -Raw | ConvertFrom-Json
+
+          $config.productName = "Medialab-Shutdown Timer"
+          $config.identifier = "com.medialab.shutdown.timer"
+
+          if ($config.app.windows.Count -gt 0) {
+            $config.app.windows[0].title = "Medialab-Shutdown Timer"
+          }
+
+          $config | ConvertTo-Json -Depth 20 |
+            Set-Content -Path $configFile -Encoding UTF8
+
+      # Change package name
+      - name: Configure package metadata
+        shell: pwsh
+        run: |
+          $packageFile = "app\package.json"
+
+          $package = Get-Content $packageFile -Raw | ConvertFrom-Json
+
+          $package.name = "medialab-shutdown-timer"
+          $package.description = "Medialab-Shutdown Timer - Shutdown, Restart, Lock and Sleep Timer"
+
+          $package | ConvertTo-Json -Depth 20 |
+            Set-Content -Path $packageFile -Encoding UTF8
+
+      # Verify application icon
       - name: Verify application icon
         shell: pwsh
         run: |
-          if (-not (Test-Path "app\src-tauri\icons\icon.ico")) {
-            Write-Error "Application icon not found: app\src-tauri\icons\icon.ico"
+          $icon = "app\src-tauri\icons\icon.ico"
+
+          if (-not (Test-Path $icon)) {
+            Write-Error "Application icon not found: $icon"
             exit 1
           }
 
           Write-Host "Application icon found:"
-          Get-Item "app\src-tauri\icons\icon.ico"
+          Get-Item $icon
 
+      # Setup Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
 
+      # Setup Rust
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      # Install dependencies
       - name: Install dependencies
         working-directory: app
         run: npm install
 
+      # Build Tauri
       - name: Build Tauri
         uses: tauri-apps/tauri-action@v1
         env:
@@ -82,4 +181,4 @@ jobs:
         with:
           projectPath: app
           uploadWorkflowArtifacts: true
-          workflowArtifactNamePattern: PowerTimer-Pro-Windows-[arch]-[bundle]
+          workflowArtifactNamePattern: Medialab-Shutdown-Timer-Windows-[arch]-[bundle]
