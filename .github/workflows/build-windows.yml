@@ -66,7 +66,7 @@ jobs:
               -Encoding UTF8
           }
 
-      # Make English the default language
+      # English as default language
       - name: Configure English default
         shell: pwsh
         run: |
@@ -75,36 +75,10 @@ jobs:
           if (Test-Path $appFile) {
             $content = Get-Content $appFile -Raw
 
-            # Change initial Arabic state to English
             $content = $content.Replace(
               "useState<boolean>(true)",
               "useState<boolean>(false)"
             )
-
-            # Add language switch
-            $marker = "          {/* Header Row: mediaLab publishing logo on left, category on right */}"
-
-            $languageButton = @'
-          {/* Language Switch */}
-          <div className="flex justify-end mb-1">
-            <button
-              type="button"
-              onClick={() => setIsArabic(!isArabic)}
-              className="px-3 py-1.5 rounded-lg bg-white border border-neutral-300 text-xs font-bold text-neutral-700 hover:bg-neutral-50 shadow-xs transition-colors"
-              title={isArabic ? 'Switch to English' : 'التبديل إلى العربية'}
-            >
-              {isArabic ? 'EN' : 'AR'}
-            </button>
-          </div>
-
-'@
-
-            if ($content -notmatch "Language Switch") {
-              $content = $content.Replace(
-                $marker,
-                $languageButton + $marker
-              )
-            }
 
             Set-Content `
               -Path $appFile `
@@ -112,7 +86,7 @@ jobs:
               -Encoding UTF8
           }
 
-      # Change application name
+      # Application name
       - name: Configure application name
         shell: pwsh
         run: |
@@ -128,9 +102,11 @@ jobs:
           }
 
           $config | ConvertTo-Json -Depth 20 |
-            Set-Content -Path $configFile -Encoding UTF8
+            Set-Content `
+              -Path $configFile `
+              -Encoding UTF8
 
-      # Change package name
+      # Package name
       - name: Configure package metadata
         shell: pwsh
         run: |
@@ -142,9 +118,11 @@ jobs:
           $package.description = "Medialab-Shutdown Timer - Shutdown, Restart, Lock and Sleep Timer"
 
           $package | ConvertTo-Json -Depth 20 |
-            Set-Content -Path $packageFile -Encoding UTF8
+            Set-Content `
+              -Path $packageFile `
+              -Encoding UTF8
 
-      # Verify application icon
+      # Verify icon
       - name: Verify application icon
         shell: pwsh
         run: |
@@ -158,22 +136,22 @@ jobs:
           Write-Host "Application icon found:"
           Get-Item $icon
 
-      # Setup Node.js
+      # Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
 
-      # Setup Rust
+      # Rust
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      # Install dependencies
+      # Dependencies
       - name: Install dependencies
         working-directory: app
         run: npm install
 
-      # Build Tauri
+      # Build
       - name: Build Tauri
         uses: tauri-apps/tauri-action@v1
         env:
