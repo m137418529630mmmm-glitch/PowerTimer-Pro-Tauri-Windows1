@@ -11,9 +11,17 @@ jobs:
     runs-on: windows-latest
 
     steps:
+
+      # =========================================================
+      # Checkout
+      # =========================================================
       - name: Checkout
         uses: actions/checkout@v4
 
+
+      # =========================================================
+      # Extract project
+      # =========================================================
       - name: Extract project
         shell: pwsh
         run: |
@@ -24,10 +32,14 @@ jobs:
             -DestinationPath "app" `
             -Force
 
-      # Fix Tauri Rust source structure
+
+      # =========================================================
+      # Fix Tauri Rust structure
+      # =========================================================
       - name: Fix Rust source structure
         shell: pwsh
         run: |
+
           New-Item `
             -ItemType Directory `
             -Force `
@@ -47,17 +59,28 @@ jobs:
               "app\src-tauri\src\main.rs"
           }
 
-      # Hide Windows console window
+
+      # =========================================================
+      # Hide Windows console
+      # =========================================================
       - name: Configure Windows GUI
         shell: pwsh
         run: |
+
           $main = "app\src-tauri\src\main.rs"
 
           if (Test-Path $main) {
+
             $content = Get-Content $main -Raw
 
             if ($content -notmatch "windows_subsystem") {
-              $content = "#![cfg_attr(not(debug_assertions), windows_subsystem = `"windows`")]`r`n`r`n" + $content
+
+              $content = @"
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
+$content
+"@
+
             }
 
             Set-Content `
@@ -66,35 +89,222 @@ jobs:
               -Encoding UTF8
           }
 
-      # English as default language
-      - name: Configure English default
+
+      # =========================================================
+      # Replace App.tsx with improved timer UI
+      # =========================================================
+      - name: Configure timer and language
         shell: pwsh
         run: |
+
           $appFile = "app\src\App.tsx"
 
-          if (Test-Path $appFile) {
-            $content = Get-Content $appFile -Raw
+          $content = Get-Content $appFile -Raw
+
+          # -----------------------------------------------------
+          # English default
+          # -----------------------------------------------------
+
+          $content = $content.Replace(
+            "useState<boolean>(true)",
+            "useState<boolean>(false)"
+          )
+
+
+          # -----------------------------------------------------
+          # Add timer unit state
+          # -----------------------------------------------------
+
+          $content = $content.Replace(
+            "const [inputMinutes, setInputMinutes] = useState<string>('30');",
+            @"
+const [inputMinutes, setInputMinutes] = useState<string>('30');
+  const [timeUnit, setTimeUnit] = useState<'minutes' | 'hours'>('minutes');
+"@
+          )
+
+
+          # -----------------------------------------------------
+          # Replace updateDuration
+          # -----------------------------------------------------
+
+          $oldFunction = @'
+  const updateDuration = (minsStr: string) => {
+    setInputMinutes(minsStr);
+    const parsed = parseFloat(minsStr);
+    if (!isNaN(parsed) && parsed > 0) {
+      const secs = Math.round(parsed * 60);
+      setTotalSeconds(secs);
+      setRemainingSeconds(secs);
+    }
+  };
+'@
+
+          $newFunction = @'
+  const updateDuration = (value: string) => {
+    setInputMinutes(value);
+
+    const parsed = parseFloat(value);
+
+    if (!isNaN(parsed) && parsed > 0) {
+      const multiplier = timeUnit === 'hours' ? 3600 : 60;
+      const secs = Math.round(parsed * multiplier);
+
+      setTotalSeconds(secs);
+      setRemainingSeconds(secs);
+    }
+  };
+'@
+
+          $content = $content.Replace(
+            $oldFunction,
+            $newFunction
+          )
+
+
+          # -----------------------------------------------------
+          # Add unit-aware duration calculation
+          # -----------------------------------------------------
+
+          $content = $content.Replace(
+            "const secs = Math.round(mins * 60);",
+            "const secs = Math.round(mins * (timeUnit === 'hours' ? 3600 : 60));"
+          )
+
+
+          # -----------------------------------------------------
+          # Add time unit selector before TIMER input
+          # -----------------------------------------------------
+
+          $timerMarker = @'
+            <div className="relative">
+'@
+
+          $unitSelector = @'
+            <div className="grid grid-cols-2 gap-2 mb-2">
+              <button
+                type="button"
+                disabled={isRunning}
+                onClick={() => {
+                  setTimeUnit('minutes');
+                  sounds.playClick();
+                }}
+                className={`py-2 rounded-lg text-xs font-bold transition-all ${
+                  timeUnit === 'minutes'
+                    ? 'bg-[#e85933] text-white shadow-sm'
+                    : 'bg-white border border-neutral-300 text-neutral-700 hover:bg-neutral-50'
+                }`}
+              >
+                {isArabic ? 'دقائق' : 'Minutes'}
+              </button>
+
+              <button
+                type="button"
+                disabled={isRunning}
+                onClick={() => {
+                  setTimeUnit('hours');
+                  sounds.playClick();
+                }}
+                className={`py-2 rounded-lg text-xs font-bold transition-all ${
+                  timeUnit === 'hours'
+                    ? 'bg-[#e85933] text-white shadow-sm'
+                    : 'bg-white border border-neutral-300 text-neutral-700 hover:bg-neutral-50'
+                }`}
+              >
+                {isArabic ? 'ساعات' : 'Hours'}
+              </button>
+            </div>
+
+'@
+
+          if ($content -notmatch "timeUnit === 'hours'") {
 
             $content = $content.Replace(
-              "useState<boolean>(true)",
-              "useState<boolean>(false)"
+              $timerMarker,
+              $unitSelector + $timerMarker
             )
 
-            Set-Content `
-              -Path $appFile `
-              -Value $content `
-              -Encoding UTF8
           }
 
+
+          # -----------------------------------------------------
+          # Update timer label
+          # -----------------------------------------------------
+
+          $content = $content.Replace(
+            "{isArabic ? 'مدة المؤقت (بالدقائق)' : 'TIMER (MINUTES)'}",
+            "{isArabic ? (timeUnit === 'hours' ? 'مدة المؤقت (بالساعات)' : 'مدة المؤقت (بالدقائق)') : (timeUnit === 'hours' ? 'TIMER (HOURS)' : 'TIMER (MINUTES)')}"
+          )
+
+
+          # -----------------------------------------------------
+          # Update placeholder
+          # -----------------------------------------------------
+
+          $content = $content.Replace(
+            "placeholder={isArabic ? '30 دقيقة' : '30 minutes'}",
+            "placeholder={isArabic ? (timeUnit === 'hours' ? '1 ساعة' : '30 دقيقة') : (timeUnit === 'hours' ? '1 hour' : '30 minutes')}"
+          )
+
+
+          # -----------------------------------------------------
+          # Update unit label
+          # -----------------------------------------------------
+
+          $content = $content.Replace(
+            "{isArabic ? 'دقيقة' : 'min'}",
+            "{isArabic ? (timeUnit === 'hours' ? 'ساعة' : 'دقيقة') : (timeUnit === 'hours' ? 'hr' : 'min')}"
+          )
+
+
+          # -----------------------------------------------------
+          # Update language switch
+          # -----------------------------------------------------
+
+          if ($content -notmatch "Language Switch") {
+
+            $marker = "          {/* Header Row: mediaLab publishing logo on left, category on right */}"
+
+            $languageButton = @'
+          {/* Language Switch */}
+          <div className="flex justify-end mb-1">
+            <button
+              type="button"
+              onClick={() => setIsArabic(!isArabic)}
+              className="px-3 py-1.5 rounded-lg bg-white border border-neutral-300 text-xs font-bold text-neutral-700 hover:bg-neutral-50 shadow-xs transition-colors"
+            >
+              {isArabic ? 'EN' : 'AR'}
+            </button>
+          </div>
+
+'@
+
+            $content = $content.Replace(
+              $marker,
+              $languageButton + $marker
+            )
+          }
+
+
+          Set-Content `
+            -Path $appFile `
+            -Value $content `
+            -Encoding UTF8
+
+
+      # =========================================================
       # Application name
+      # =========================================================
       - name: Configure application name
         shell: pwsh
         run: |
+
           $configFile = "app\src-tauri\tauri.conf.json"
 
           $config = Get-Content $configFile -Raw | ConvertFrom-Json
 
           $config.productName = "Medialab-Shutdown Timer"
+
           $config.identifier = "com.medialab.shutdown.timer"
 
           if ($config.app.windows.Count -gt 0) {
@@ -106,15 +316,20 @@ jobs:
               -Path $configFile `
               -Encoding UTF8
 
+
+      # =========================================================
       # Package name
+      # =========================================================
       - name: Configure package metadata
         shell: pwsh
         run: |
+
           $packageFile = "app\package.json"
 
           $package = Get-Content $packageFile -Raw | ConvertFrom-Json
 
           $package.name = "medialab-shutdown-timer"
+
           $package.description = "Medialab-Shutdown Timer - Shutdown, Restart, Lock and Sleep Timer"
 
           $package | ConvertTo-Json -Depth 20 |
@@ -122,36 +337,54 @@ jobs:
               -Path $packageFile `
               -Encoding UTF8
 
+
+      # =========================================================
       # Verify icon
+      # =========================================================
       - name: Verify application icon
         shell: pwsh
         run: |
+
           $icon = "app\src-tauri\icons\icon.ico"
 
           if (-not (Test-Path $icon)) {
+
             Write-Error "Application icon not found: $icon"
+
             exit 1
           }
 
           Write-Host "Application icon found:"
           Get-Item $icon
 
+
+      # =========================================================
       # Node.js
+      # =========================================================
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
 
+
+      # =========================================================
       # Rust
+      # =========================================================
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+
+      # =========================================================
       # Dependencies
+      # =========================================================
       - name: Install dependencies
         working-directory: app
         run: npm install
 
-      # Build
+
+      # =========================================================
+      # Build Tauri
+      # =========================================================
       - name: Build Tauri
         uses: tauri-apps/tauri-action@v1
         env:
