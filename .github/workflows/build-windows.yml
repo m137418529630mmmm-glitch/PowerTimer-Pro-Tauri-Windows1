@@ -11,17 +11,15 @@ jobs:
     runs-on: windows-latest
 
     steps:
-
-      # =========================================================
-      # Checkout repository
-      # =========================================================
+      # =========================
+      # 1. Download repository
+      # =========================
       - name: Checkout
         uses: actions/checkout@v4
 
-
-      # =========================================================
-      # Extract project ZIP
-      # =========================================================
+      # =========================
+      # 2. Extract ZIP
+      # =========================
       - name: Extract project
         shell: pwsh
         run: |
@@ -32,10 +30,11 @@ jobs:
             -DestinationPath "app" `
             -Force
 
+          Write-Host "Project extracted successfully."
 
-      # =========================================================
-      # Fix Tauri Rust source structure
-      # =========================================================
+      # =========================
+      # 3. Fix Tauri Rust structure
+      # =========================
       - name: Fix Rust source structure
         shell: pwsh
         run: |
@@ -58,20 +57,26 @@ jobs:
               "app\src-tauri\src\main.rs"
           }
 
+          Write-Host "Rust source structure fixed."
 
-      # =========================================================
-      # Hide Windows console window
-      # =========================================================
+      # =========================
+      # 4. Hide Windows console
+      # =========================
       - name: Configure Windows GUI
         shell: pwsh
         run: |
           $main = "app\src-tauri\src\main.rs"
 
           if (Test-Path $main) {
+
             $content = Get-Content $main -Raw
 
             if ($content -notmatch "windows_subsystem") {
-              $content = "#![cfg_attr(not(debug_assertions), windows_subsystem = `"windows`")]`r`n`r`n" + $content
+
+              $header = '#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]'
+
+              $content = $header + "`r`n`r`n" + $content
+
             }
 
             Set-Content `
@@ -80,38 +85,61 @@ jobs:
               -Encoding UTF8
           }
 
-
-      # =========================================================
-      # Configure English as default language
-      # =========================================================
-      - name: Configure English default
+      # =========================
+      # 5. Force shutdown command
+      # =========================
+      - name: Configure forced Windows shutdown
         shell: pwsh
         run: |
-          $appFile = "app\src\App.tsx"
 
-          if (Test-Path $appFile) {
-            $content = Get-Content $appFile -Raw
+          $files = @(
+            "app\src-tauri\src\lib.rs",
+            "app\src-tauri\src\main.rs",
+            "app\src\App.tsx"
+          )
 
-            # Change Arabic initial state to English
-            $content = $content.Replace(
-              "useState<boolean>(true)",
-              "useState<boolean>(false)"
-            )
+          foreach ($file in $files) {
+
+            if (-not (Test-Path $file)) {
+              continue
+            }
+
+            $content = Get-Content $file -Raw
+
+            # Replace common shutdown commands
+            $content = $content -replace `
+              'shutdown\s+/s\s+/t\s+\d+', `
+              'shutdown.exe /s /f /t 0'
+
+            $content = $content -replace `
+              'shutdown\s+/s\s+/t\s+0', `
+              'shutdown.exe /s /f /t 0'
+
+            $content = $content -replace `
+              'shutdown\.exe\s+/s\s+/t\s+\d+', `
+              'shutdown.exe /s /f /t 0'
 
             Set-Content `
-              -Path $appFile `
+              -Path $file `
               -Value $content `
               -Encoding UTF8
           }
 
+          Write-Host "Forced shutdown configuration applied."
 
-      # =========================================================
-      # Configure application name
-      # =========================================================
+      # =========================
+      # 6. Application name
+      # =========================
       - name: Configure application name
         shell: pwsh
         run: |
+
           $configFile = "app\src-tauri\tauri.conf.json"
+
+          if (-not (Test-Path $configFile)) {
+            Write-Error "tauri.conf.json not found."
+            exit 1
+          }
 
           $config = Get-Content $configFile -Raw | ConvertFrom-Json
 
@@ -123,81 +151,117 @@ jobs:
             $config.app.windows[0].title = "Medialab-Shutdown Timer"
           }
 
-          $config | ConvertTo-Json -Depth 20 |
+          $config |
+            ConvertTo-Json -Depth 30 |
             Set-Content `
               -Path $configFile `
               -Encoding UTF8
 
+          Write-Host "Application name configured."
 
-      # =========================================================
-      # Configure package metadata
-      # =========================================================
+      # =========================
+      # 7. Package name
+      # =========================
       - name: Configure package metadata
         shell: pwsh
         run: |
+
           $packageFile = "app\package.json"
+
+          if (-not (Test-Path $packageFile)) {
+            Write-Error "package.json not found."
+            exit 1
+          }
 
           $package = Get-Content $packageFile -Raw | ConvertFrom-Json
 
           $package.name = "medialab-shutdown-timer"
 
-          $package.description = "Medialab-Shutdown Timer - Shutdown, Restart, Lock and Sleep Timer"
+          $package.description = `
+            "Medialab-Shutdown Timer - Windows Shutdown Timer"
 
-          $package | ConvertTo-Json -Depth 20 |
+          $package |
+            ConvertTo-Json -Depth 30 |
             Set-Content `
               -Path $packageFile `
               -Encoding UTF8
 
-
-      # =========================================================
-      # Verify application icon
-      # =========================================================
+      # =========================
+      # 8. Verify icon
+      # =========================
       - name: Verify application icon
         shell: pwsh
         run: |
+
           $icon = "app\src-tauri\icons\icon.ico"
 
           if (-not (Test-Path $icon)) {
-            Write-Error "Application icon not found: $icon"
+
+            Write-Error `
+              "Application icon not found: $icon"
+
             exit 1
           }
 
-          Write-Host "Application icon found:"
+          Write-Host "Application icon found."
+
           Get-Item $icon
 
-
-      # =========================================================
-      # Setup Node.js
-      # =========================================================
+      # =========================
+      # 9. Setup Node
+      # =========================
       - name: Setup Node.js
         uses: actions/setup-node@v4
+
         with:
           node-version: 22
 
-
-      # =========================================================
-      # Setup Rust
-      # =========================================================
+      # =========================
+      # 10. Setup Rust
+      # =========================
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-
-      # =========================================================
-      # Install dependencies
-      # =========================================================
+      # =========================
+      # 11. Install dependencies
+      # =========================
       - name: Install dependencies
         working-directory: app
-        run: npm install
+        shell: pwsh
+        run: |
 
+          npm install
 
-      # =========================================================
-      # Build Tauri
-      # =========================================================
-      - name: Build Tauri
+      # =========================
+      # 12. Build application
+      # =========================
+      - name: Build Tauri application
         uses: tauri-apps/tauri-action@v1
+
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
         with:
+
           projectPath: app
+
           uploadWorkflowArtifacts: true
+
           workflowArtifactNamePattern: Medialab-Shutdown-Timer-Windows-[arch]-[bundle]
+
+      # =========================
+      # 13. Show generated files
+      # =========================
+      - name: Show build output
+        shell: pwsh
+        run: |
+
+          Write-Host "===================================="
+          Write-Host "BUILD FINISHED"
+          Write-Host "===================================="
+
+          Get-ChildItem `
+            "app\src-tauri\target\release\bundle" `
+            -Recurse `
+            -ErrorAction SilentlyContinue |
+            Select-Object FullName, Length
